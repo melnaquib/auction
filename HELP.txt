@@ -1,0 +1,26 @@
+exit
+close connection
+
+list [me/users/sales/auctions]
+list own funds and items
+or list account names
+or items on sale
+or items on auction
+
+fund <+/-> <FUND>
+deposit/withdraw fund";
+
+item <+/-> <ITEM>]
+deposit/withdraw item
+
+sell <ITEM> <PRICE>
+put ITEM on sale for a <PRICE>
+
+buy <ITEM>
+buy <ITEM>
+
+auction <ITEM>  <PRICE>
+put <ITEM> on <ACUTION> for a starting <PRICE>
+
+bid <ITEM> <PRICE>
+place <BID> on <ITEM> that is open to auction
