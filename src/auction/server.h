@@ -8,6 +8,8 @@
 #include <QHash>
 #include <QTimer>
 
+#include <QMutex>
+
 #include <queue>
 
 class Ui;
@@ -38,7 +40,10 @@ private:
     QSet<Session*> anonSessions;
     QHash<QString, Session*> accountsSessions;
 
-    QList<int> saleTimers;
+    qint64 lastSaleConclude;
+    QMutex sale_conclude_mutex;
+
+//    QSet<int> saleTimers;
 //    std::priority_queue<> saleTimers;
 //    QTimer *sales_timer;
 //    QThreadPool *threadPool;

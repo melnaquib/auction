@@ -10,12 +10,13 @@
 #include <QtConcurrent/QtConcurrent>
 
 Server::Server(Ui *ui, QObject *parent) :
-    QTcpServer(parent), ui(ui) {
+    QTcpServer(parent), ui(ui), lastSaleConclude(0) {
 
 //    connect(sales_timer, &QTimer::timeout, this, &Server::sale_conclude, Qt::QueuedConnection);
 //    sales_timer->setSingleShot(true);
 //    sales_timer->start(0);
 
+    db::connect();
     sale_conclude();
 }
 
@@ -56,9 +57,8 @@ void Server::notifyUser(const QString &user, const QString &msg) {
     qInfo() << "NOTTIFY : " << user << (online ? " : ONLINE : " : " : OFFLINE : ") << msg;
     if(online) {
         Session *session = accountsSessions[user];
-//        QMetaObject::invokeMethod(session, SLOT(notifyUser(QString)), Qt::QueuedConnection, msg);
         QMetaObject::invokeMethod(
-                    session, SLOT(notifyUser(QString)),
+                    session, "notifyUser",
                     Qt::QueuedConnection,
                     Q_ARG(QString, msg));
 
@@ -73,19 +73,25 @@ void Server::on_saleStart(qint64 timestamp, const QString &item) {
 //    }
 //    int interval = 10;
 //    saleTimers << startTimer(interval, Qt::VeryCoarseTimer);
+    startTimer(SALE_TIMEOUT + SALE_TIMEOUT_MARGIN, Qt::VeryCoarseTimer);
 
 }
 
 void Server::timerEvent(QTimerEvent *event) {
-    if(saleTimers.contains(event->timerId())) {
-        sale_conclude();
-        saleTimers.remove(event->timerId());
-    }
+    //TODO filter
+    //if timerevent in saletimers
+    sale_conclude();
 }
 
 void Server::sale_conclude() {
-    QHash<QString, QString> sold = db::sale_conclude();
-    for(auto i : sold) {
-        notifyUser(i[0], i[1]);
+    QMutexLocker mlocker(&sale_conclude_mutex);
+    qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if( (now - lastSaleConclude) > SALE_TIMEOUT_INTERLUDE_MIN) {
+        lastSaleConclude = now;
+        QHash<QString, QString> sold = db::sale_conclude();
+        for(auto account : sold.keys()) {
+            notifyUser(account, sold[account]);
+        }
     }
+
 }

@@ -2,20 +2,22 @@
 #include "server.h"
 #include "db.h"
 #include "ui.h"
+#include "config.h"
 
 #include <QDateTime>
 #include <QTcpSocket>
 
 Session::Session(qintptr socketDescr, Ui *ui, QObject *parent) :
     QThread(parent),
-    socketDescr(socketDescr), socket(Q_NULLPTR), ui(ui) {
+    socketDescr(socketDescr), socket(Q_NULLPTR), ui(ui), os(QString()), _output(&os, QIODevice::ReadWrite) {
 }
 
 Session::~Session() {
 }
 
 void Session::notifyUser(const QString &msg) {
-    output() << msg;
+    output() << NEWL "NOTIFY" NEWL << msg << NEWL;
+    flush();
 }
 
 void Session::close() {
@@ -45,16 +47,22 @@ QTextStream &Session::output() {
     return _output;
 }
 
+
+void Session::flush() {
+    auto ba = _output.readAll().toLatin1();
+    socket->write(ba);
+    socket->flush();
+}
+
 Server *Session::server() const {
     return qobject_cast<Server*>(parent());
 }
-
 
 void Session::run(void)
 {
 
     socket = new QTcpSocket();
-    _output.setDevice(socket);
+    //    _output.setDevice(socket);
 
     if (!socket->setSocketDescriptor(socketDescr)) {
         qWarning() << "Connection dropped early";
@@ -69,12 +77,14 @@ void Session::run(void)
 
     quint64 counter = 0;
     ui->start(this, QDateTime::currentMSecsSinceEpoch(), counter);
-    output().flush();
+    flush();
     while(!isInterruptionRequested()) {
         socket->waitForReadyRead(5000);
         auto buffer = socket->readLine();
-        if(!buffer.isEmpty())
+        if(!buffer.isEmpty()) {
+            QMutexLocker l(&handleMutex);
             ui->handle(this, QDateTime::currentMSecsSinceEpoch(), counter++, QLatin1StringView(buffer));
+        }
     }
 
     db::close();

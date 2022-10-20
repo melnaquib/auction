@@ -30,7 +30,7 @@ namespace db {
 
     QStringList sale_list(const QString &account = QString());
     bool sale_add(qint64 timestamp, const QString &account, QLatin1StringView item, qint64 price);
-    bool sale_buy(qint64 timestamp, const QString &account, QLatin1StringView item);
+    QPair<QString, QString> sale_buy(qint64 timestamp, const QString &account, QLatin1StringView item);
 
     QStringList auction_list(const QString &account = QString());
     bool auction_add(qint64 timestamp, const QString &account, QLatin1StringView item, qint64 bid);

@@ -3,6 +3,7 @@
 #include <QThread>
 #include <QObject>
 #include <QDebug>
+#include <QMutex>
 
 class QTcpSocket;
 class Ui;
@@ -28,6 +29,8 @@ public slots:
     void request_exit();
     void notifyUser(const QString &msg);
 
+    void flush();
+
 signals:
 
 private slots:   
@@ -37,6 +40,9 @@ private:
     const qintptr socketDescr;
     QTcpSocket *socket;
     QTextStream _output;
+    QString os;
+
+    QMutex handleMutex;
 
     Ui *ui;
 

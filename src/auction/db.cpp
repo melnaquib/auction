@@ -13,12 +13,15 @@
 
 #define NEWL "\r\n"
 
+typedef QLatin1StringView QLatin1String;
+
 namespace db {
 
 #define DB_NAME_DEFAULT "auction.sqlite3";
 
 #define DB_FILTER_AUCTION " price != 0 AND buyer IS NOT NULL "
 #define DB_FILTER_SALE " price != 0 AND buyer IS NULL "
+#define DB_FILTER_SALE_AUCTION " price != 0 "
 #define DB_FILTER_NOT_SALE " price = 0 AND buyer IS NULL "
 #define DB_FILTER_NOT_AUCTION " price = 0 AND buyer IS NOT NULL "
 #define DB_FILTER_NOT_AUCTION_NOT_SALE " price IS NULL "
@@ -183,7 +186,9 @@ QStringList sale_list(const QString &account) {
 bool sale_add(qint64 timestamp, const QString &account, QLatin1StringView item, qint64 price) {
     auto database = db();
     QSqlQuery query(database);
-    bool ok = query.prepare("UPDATE items SET "
+    bool ok = true;
+    ok = database.transaction();
+    ok = query.prepare("UPDATE items SET "
                             "timestamp = ?, price = ? "
                             " WHERE name = ? AND owner = ? AND "
                             DB_FILTER_NOT_AUCTION_NOT_SALE);
@@ -194,11 +199,9 @@ bool sale_add(qint64 timestamp, const QString &account, QLatin1StringView item, 
 
     ok = query.exec();
     ok = 1 == query.numRowsAffected();
+    query.finish();
 
     if (ok) {
-
-        ok = fund_add(account, -1 * sale_fee());
-
         QSqlQuery query(database);
         query.prepare("UPDATE accounts SET fund = fund + ? WHERE name=? and (fund + ?) > 0");
         query.addBindValue(-1 * sale_fee());
@@ -217,7 +220,7 @@ bool sale_add(qint64 timestamp, const QString &account, QLatin1StringView item, 
     return ok;
 }
 
-bool sale_buy(qint64 timestamp, const QString &account, QLatin1StringView item) {
+QPair<QString, QString> sale_buy(qint64 timestamp, const QString &account, QLatin1StringView item) {
     auto database = db();
     QSqlQuery query_pay(database);
     QSqlQuery query(database);
@@ -226,24 +229,28 @@ bool sale_buy(qint64 timestamp, const QString &account, QLatin1StringView item) 
 
     ok = database.transaction();
 
-    ok = query.prepare("SELECT * FROM items WHERE name = ? and owner != ? AND timestamp < (? - ?) AND " DB_FILTER_SALE);
+    ok = query.prepare(
+                "UPDATE items SET "
+                " owner_prev = owner, price_prev = price, "
+                " owner = ?, buyer = NULL, price = NULL, timestamp = NULL "
+                " WHERE name = ? and owner != ? AND timestamp < ? AND " DB_FILTER_SALE
+                " RETURNING * ");
+    query.addBindValue(account);
     query.addBindValue(item);
     query.addBindValue(account);
-    query.addBindValue(timestamp);
-    query.addBindValue(SALE_TIMEOUT);
+    query.addBindValue(timestamp - SALE_TIMEOUT);
 
     ok = query.exec();
-    if(!query.next()) {
-        database.rollback();
+    ok = query.next();
+    if (!ok) {
         qWarning() << "Couldn't buy item; ; failed to find matching item!" << timestamp << account << item;
-        return false;
     }
 
-    auto record = query.record();
-    qint64 price = record.value("price").toInt();
-//    QString buyer = record.value("buyer").toString();
-    QString buyer = account;
-    QString owner = record.value("owner").toString();
+    qint64 price = ok ? query.value("price_prev").toInt() : 0;
+//    QString buyer = query.value("buyer").toString();
+    QString buyer = ok ? account : QString();
+    QString owner = ok ? query.value("owner_prev").toString() : QString();
+    query.finish();
 
     if(ok) {
         QSqlQuery query(database);
@@ -264,27 +271,18 @@ bool sale_buy(qint64 timestamp, const QString &account, QLatin1StringView item) 
         ok = 1 == query.numRowsAffected();
     }
 
+    if(ok) {
+        ok = database.commit();
+    } else {
+        database.rollback();
+        qWarning() << "Couldn't buy item; failed to transfer price!" << timestamp << account << item;
+    }
     if(!ok) {
-        database.rollback();
-        qWarning() << "Couldn't buy item; failed to transfer price!" << timestamp << account << item << record;
-        return false;
+        return QPair<QString, QString>();
     }
-
-    ok = query.prepare("UPDATE items SET "
-                       " owner = ?, buyer = NULL, price = NULL, timestamp = NULL "
-                       " WHERE name = ? ");
-    query.addBindValue(buyer);
-    query.addBindValue(item);
-    query.exec();
-
-    if(1 != query.numRowsAffected()) {
-        database.rollback();
-        qWarning() << "Couldn't buy item; failed to change owner!" << timestamp << account << item;
-        return false;
-    }
-
-    database.commit();
-    return true;
+    const QString fmt = "'%1' Bought Item '%2' for '%3'.";
+    QString msg = fmt.arg(buyer).arg(item).arg(price);
+    return QPair<QString, QString>(owner, msg);
 }
 
 
@@ -303,14 +301,88 @@ QStringList auction_list(const QString &account) {
 }
 
 bool auction_add(qint64 timestamp, const QString &account, QLatin1StringView item, qint64 price) {
-    return true;
+    auto database = db();
+    QSqlQuery query(database);
+    bool ok = true;
+    ok = query.prepare("UPDATE items SET "
+                            "timestamp = ?, price = ?, buyer = owner "
+                            " WHERE name = ? AND owner = ? AND "
+                            DB_FILTER_NOT_AUCTION_NOT_SALE);
+    query.addBindValue(timestamp);
+    query.addBindValue(price - 1); // to allow a bid equal to starting price to be accepted
+    query.addBindValue(item);
+    query.addBindValue(account);
+
+    ok = query.exec();
+    ok = 1 == query.numRowsAffected();
+    qDebug() << "AUCTION by " << account << " on item : " << item << " starting at " << price  << ok;
+    return ok;
 }
 
 bool auction_bid(qint64 timestamp, const QString &buyer, QLatin1StringView item, qint64 bid) {
-    return true;
+    auto database = db();
+
+    bool ok = true;
+    ok = database.transaction();
+
+    QSqlQuery query_pay(database);
+    QSqlQuery query(database);
+
+    ok = query.prepare(
+                "UPDATE items SET "
+                " owner_prev = buyer, price_prev = price, "
+                " buyer = ?, price = ?, timestamp = ? "
+                " WHERE name = ? and owner != ? AND timestamp > ? AND "
+                " ? > price AND " DB_FILTER_AUCTION
+                " RETURNING * ");
+    query.addBindValue(buyer);
+    query.addBindValue(bid);
+    query.addBindValue(timestamp);
+    query.addBindValue(item);
+    query.addBindValue(buyer);
+    query.addBindValue(timestamp - SALE_TIMEOUT);
+    query.addBindValue(bid);
+    ok = query.exec();
+    if(!query.next()) {
+        qWarning() << "Couldn't bid on item; ; failed to find matching item!" << timestamp << buyer << item;
+        ok = false;
+    }
+
+    qint64 prev_bid = query.value("price_prev").toInt();
+    QString prev_bidder = query.value("owner_prev").toString();
+    QString owner = query.value("owner").toString();
+    query.finish();
+
+    //refund old bid
+    if(ok && prev_bidder != owner) {
+        QSqlQuery query(database);
+        query.prepare("UPDATE accounts SET fund = fund + ? WHERE name=?");
+        query.addBindValue(prev_bid);
+        query.addBindValue(buyer);
+        ok = query.exec();
+        ok = 1 == query.numRowsAffected();
+    }
+    if(ok) {
+        QSqlQuery query(database);
+        query.prepare("UPDATE accounts SET fund = fund + ? WHERE name=? and (fund + ?) > 0");
+        query.addBindValue(-1 * bid);
+        query.addBindValue(buyer);
+        query.addBindValue(-1 * bid);
+        ok = query.exec();
+        ok = 1 == query.numRowsAffected();
+    }
+
+
+    if(ok) {
+        ok = database.commit();
+    } else {
+        database.rollback();
+        qWarning() << "Couldn't buy item; failed to transfer price!" << timestamp << buyer << item;
+    }
+    return ok;
 }
 
-QHash<QString, QString> sale_conclude() {
+QHash<QString, QString> sale_conclude_auctions() {
     auto database = db();
     QSqlQuery query(database);
 
@@ -319,17 +391,47 @@ QHash<QString, QString> sale_conclude() {
                 " price_prev = price, price = NULL, "
                 " owner_prev = owner, owner = buyer, "
                 " buyer = NULL, timestamp = NULL "
-                " WHERE timestamp + ? >= UNIXEPOCH()  AND " DB_FILTER_AUCTION
+                " WHERE timestamp + ? <= ?  AND " DB_FILTER_AUCTION
                 " RETURNING *"
     );
-    query.addBindValue(SALE_TIMEOUT);
+    query.addBindValue(SALE_TIMEOUT + SALE_TIMEOUT_MARGIN);
+    query.addBindValue(QDateTime::currentMSecsSinceEpoch());
     ok = query.exec();
     const QString fmt = "'%1' Bought Item '%2' for '%3'.";
     QHash<QString, QString> res;
     while(query.next()) {
-        res[query.value(5).toString()] = fmt.arg(query.value(1).toString()).arg(query.value(0).toString()).arg(query.value(6).toString());
+        res[query.value(5).toString()] = fmt.arg(query.value(1).toString()).arg(query.value(0).toString()).arg(query.value(6).toInt());
     }
     return res;
+}
+
+QHash<QString, QString> sale_conclude_expired() {
+    auto database = db();
+    QSqlQuery query(database);
+
+    bool ok = query.prepare(
+                "UPDATE items SET "
+                " price = NULL, "
+                " buyer = NULL, timestamp = NULL "
+                " WHERE timestamp + ? <= ?  AND "
+                " (buyer = owner OR buyer IS NULL) AND "
+                DB_FILTER_SALE_AUCTION
+                " RETURNING *"
+    );
+    query.addBindValue(SALE_TIMEOUT + SALE_TIMEOUT_MARGIN);
+    query.addBindValue(QDateTime::currentMSecsSinceEpoch());
+    ok = query.exec();
+    const QString fmt = "'%1' : Item '%2' sale expired!: for '%3'.";
+    QHash<QString, QString> res;
+    while(query.next()) {
+        res[query.value(5).toString()] = fmt.arg(query.value(1).toString()).arg(query.value(0).toString()).arg(query.value(6).toInt());
+    }
+    return res;
+}
+
+QHash<QString, QString> sale_conclude() {
+    sale_conclude_expired();
+    return sale_conclude_auctions();
 }
 
 }

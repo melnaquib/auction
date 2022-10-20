@@ -22,7 +22,7 @@ Ui::Ui(QObject *parent) :
 }
 
 bool Ui::handle_login(Session *session, qint64 timestamp,  quint64 counter, QLatin1StringView buffer) {
-    QString username = buffer.trimmed();
+    QString username = buffer.trimmed().toString();
     if(username.isEmpty())
         return false;
 
@@ -42,7 +42,7 @@ bool Ui::handle(Session *session, qint64 timestamp,  quint64 counter, QLatin1Str
         bool ok = handle_login(session, timestamp, counter, buffer);
         if(ok) prompt(session, timestamp, counter);
         else prompt_login(session, timestamp, counter);
-        session->output().flush();
+        session->flush();
         return ok;
     }
 
@@ -78,13 +78,13 @@ bool Ui::handle(Session *session, qint64 timestamp,  quint64 counter, QLatin1Str
     }
     footer(session, timestamp, counter, cmd, ok);
     prompt(session, timestamp, counter);
-    session->output().flush();
+    session->flush();
     return ok;
 }
 
 bool Ui::start(Session *session, qint64 timestamp,  quint64 counter) {
     prompt_login(session, timestamp, counter);
-    session->output().flush();
+    session->flush();
     return true;
 }
 
@@ -163,17 +163,25 @@ bool Ui::sale(Session *session, qint64 timestamp,  quint64 counter, QList<QLatin
     qint64 amount = cmd[2].toInt();
     bool ok = db::sale_add(timestamp, account, item, amount);
     if(ok)
-        QMetaObject::invokeMethod(
-                    session->server(), SLOT(on_saleStart(qint64, QString)),
+        ok = QMetaObject::invokeMethod(
+                    session->server(), "on_saleStart",
                     Qt::QueuedConnection,
-                    Q_ARG(qint64, timestamp), Q_ARG(QString, item));
+                    Q_ARG(qint64, timestamp), Q_ARG(QString, item.toString()));
     return ok;
 }
 
 bool Ui::buy(Session *session, qint64 timestamp,  quint64 counter, QList<QLatin1StringView> cmd) {
     auto account = session->getAccount();
     QLatin1StringView item = cmd[1];
-    return db::sale_buy(timestamp, account, item);
+    QPair<QString, QString> res = db::sale_buy(timestamp, account, item);
+    bool ok = !res.first.isEmpty();
+    if(ok) {
+        QMetaObject::invokeMethod(
+                    session->server(), "notifyUser",
+                    Qt::QueuedConnection,
+                    Q_ARG(QString, res.first), Q_ARG(QString, res.second));
+    }
+    return ok;
 }
 
 bool Ui::auction(Session *session, qint64 timestamp,  quint64 counter, QList<QLatin1StringView> cmd) {
@@ -187,5 +195,11 @@ bool Ui::bid(Session *session, qint64 timestamp,  quint64 counter, QList<QLatin1
     auto account = session->getAccount();
     QLatin1StringView item = cmd[1];
     qint64 amount = cmd[2].toInt();
-    return db::auction_bid(timestamp, account, item, amount);
+    bool ok = db::auction_bid(timestamp, account, item, amount);
+    if(ok)
+        QMetaObject::invokeMethod(
+                    session->server(), "on_saleStart",
+                    Qt::QueuedConnection,
+                    Q_ARG(qint64, timestamp), Q_ARG(QString, item.toString()));
+    return ok;
 }

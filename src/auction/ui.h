@@ -10,8 +10,6 @@ class Session;
 class Server;
 class Ui;
 
-typedef QLatin1StringView QLatin1String;
-
 using Handler = bool (Ui::*)(Session *session, qint64 timestamp,  quint64 counter, QList<QLatin1StringView> cmd);
 
 //inline std::intptr_t qHash(const Handler &handler) noexcept {
