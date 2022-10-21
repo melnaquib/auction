@@ -144,7 +144,7 @@ bool Ui::exit(Session *session, qint64 timestamp,  quint64 counter, QList<QLatin
 
 bool Ui::fund(Session *session, qint64 timestamp,  quint64 counter, QList<QLatin1StringView> cmd) {
     bool add = "-" != cmd[1];
-    qint64 amount = cmd[2].toInt();
+    qint64 amount = QString(cmd[2]).toInt();
     amount *= (add ? 1 : -1);
     return db::fund_add(session->getAccount(), amount);
 }
@@ -160,7 +160,7 @@ bool Ui::item(Session *session, qint64 timestamp,  quint64 counter, QList<QLatin
 bool Ui::sale(Session *session, qint64 timestamp,  quint64 counter, QList<QLatin1StringView> cmd) {
     auto account = session->getAccount();
     QLatin1StringView item = cmd[1];
-    qint64 amount = cmd[2].toInt();
+    qint64 amount = QString(cmd[2]).toInt(nullptr, 10);
     bool ok = db::sale_add(timestamp, account, item, amount);
     if(ok)
         ok = QMetaObject::invokeMethod(
@@ -187,14 +187,14 @@ bool Ui::buy(Session *session, qint64 timestamp,  quint64 counter, QList<QLatin1
 bool Ui::auction(Session *session, qint64 timestamp,  quint64 counter, QList<QLatin1StringView> cmd) {
     auto account = session->getAccount();
     QLatin1StringView item = cmd[1];
-    qint64 amount = cmd[2].toInt();
+    qint64 amount = QString(cmd[2]).toInt();
     return db::auction_add(timestamp, account, item, amount);
 }
 
 bool Ui::bid(Session *session, qint64 timestamp,  quint64 counter, QList<QLatin1StringView> cmd) {
     auto account = session->getAccount();
     QLatin1StringView item = cmd[1];
-    qint64 amount = cmd[2].toInt();
+    qint64 amount = QString(cmd[2]).toInt();
     bool ok = db::auction_bid(timestamp, account, item, amount);
     if(ok)
         QMetaObject::invokeMethod(

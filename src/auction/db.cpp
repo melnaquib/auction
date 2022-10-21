@@ -13,7 +13,8 @@
 
 #define NEWL "\r\n"
 
-typedef QLatin1StringView QLatin1String;
+typedef QLatin1String QLatin1StringView;
+
 
 namespace db {
 

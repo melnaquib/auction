@@ -2,8 +2,12 @@
 
 #include <QSqlDatabase>
 #include <QThreadStorage>
+#include <QLatin1String>
+
+typedef QLatin1String QLatin1StringView;
 
 class QThread;
+
 
 namespace db {
 

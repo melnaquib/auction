@@ -5,10 +5,14 @@
 #include "ui.h"
 
 #include <QCoreApplication>
+#include <QDir>
 
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
+
+    QDir::setCurrent(QCoreApplication::applicationDirPath());
+
     app.setApplicationName(APP_NAME);
     app.setApplicationName(APP_VERSION);
     app.setOrganizationName(ORG_NAME);

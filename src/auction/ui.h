@@ -2,8 +2,10 @@
 
 #include <QThread>
 #include <QObject>
-#include <QLatin1StringView>
+#include <QLatin1String>
 #include <QHash>
+
+typedef QLatin1String QLatin1StringView;
 
 
 class Session;

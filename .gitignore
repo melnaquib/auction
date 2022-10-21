@@ -53,3 +53,8 @@ compile_commands.json
 
 *_qmlcache.qrc
 
+.vs/**
+
+out/**
+
+

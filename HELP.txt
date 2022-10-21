@@ -1,3 +1,5 @@
+# USAGE
+
 exit
 close connection
 
@@ -13,7 +15,7 @@ deposit/withdraw fund";
 item <+/-> <ITEM>]
 deposit/withdraw item
 
-sell <ITEM> <PRICE>
+sale <ITEM> <PRICE>
 put ITEM on sale for a <PRICE>
 
 buy <ITEM>
@@ -24,3 +26,42 @@ put <ITEM> on <ACUTION> for a starting <PRICE>
 
 bid <ITEM> <PRICE>
 place <BID> on <ITEM> that is open to auction
+
+
+# demo scenario
+## User0
+
+$telnet localhost 8080
+ USER NAME ? : 0 : seller0
+ AUCTION : 1 : item + u0item0
+TRUE
+ AUCTION : 1 : item + u0item1
+TRUE
+ AUCTION : 1 : fund + 10000
+TRUE
+ AUCTION : 1 : sale u0item00 100
+TRUE
+ AUCTION : 1 : auction u0item11 200
+TRUE
+ AUCTION : 1 : list me
+TRUE
+
+## User1
+
+$telnet localhost 8080
+ USER NAME ? : 0 : buyer1
+ AUCTION : 1 : list sale
+TRUE
+ AUCTION : 1 : list auction
+TRUE
+ AUCTION : 1 : fund + 10000
+TRUE
+ AUCTION : 1 : list me
+TRUE
+ AUCTION : 1 : buy u0item00
+TRUE
+ AUCTION : 1 : bid u0item11 200
+TRUE
+ AUCTION : 1 : bid u0item11 300
+TRUE
+
